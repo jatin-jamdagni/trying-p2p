@@ -7,22 +7,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send } from "lucide-react";
 
-export default function Chat() {
+interface ChatProps {
+  roomId: string;
+}
+
+interface ChatMessage {
+  id: number;
+  sender: string;
+  content: string;
+  timestamp: string;
+}
+
+export default function Chat({ roomId }: ChatProps) {
   const [message, setMessage] = useState<string>("");
-  const [chatHistory, setChatHistory] = useState<
-    { text: string; sender: "user" | "server" }[]
-  >([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ws = new WebSocket("wss://echo.websocket.org");
+    const ws = new WebSocket("wss://echo.websocket.org"); // Use a proper WebSocket server for production
 
     ws.onmessage = (event) => {
-      setChatHistory((prevHistory) => [
-        ...prevHistory,
-        { text: event.data, sender: "server" },
-      ]);
+      const newMessage: ChatMessage = {
+        id: Date.now(),
+        sender: "Other",
+        content: event.data,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      setChatHistory((prevHistory) => [...prevHistory, newMessage]);
     };
 
     setSocket(ws);
@@ -30,7 +42,7 @@ export default function Chat() {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [roomId]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -38,56 +50,65 @@ export default function Chat() {
     }
   }, [chatHistory]);
 
-  const sendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
+  const sendMessage = () => {
     if (socket && message.trim()) {
-      socket.send(message);
-      setChatHistory((prevHistory) => [
-        ...prevHistory,
-        { text: message, sender: "user" },
-      ]);
+      const newMessage: ChatMessage = {
+        id: Date.now(),
+        sender: "You",
+        content: message,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+      socket.send(`${roomId}: ${message}`);
+      setChatHistory((prevHistory) => [...prevHistory, newMessage]);
       setMessage("");
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      sendMessage();
+    }
+  };
+
   return (
-    <Card className="w-full max-w-md mx-auto mt-8">
+    <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Chat</CardTitle>
+        <CardTitle className="text-2xl font-bold">
+          Chat: Room {roomId}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ScrollArea
-          className="h-[400px] mb-4 p-4 rounded-md border"
+          className="h-[300px] mb-4 p-4 rounded-md border"
           ref={scrollAreaRef}
         >
-          {chatHistory.map((msg, index) => (
+          {chatHistory.map((msg) => (
             <div
-              key={index}
+              key={msg.id}
               className={`mb-2 p-2 rounded-lg ${
-                msg.sender === "user"
-                  ? "bg-primary text-primary-foreground ml-auto"
-                  : "bg-muted"
-              } max-w-[80%] ${
-                msg.sender === "user" ? "text-right" : "text-left"
-              }`}
+                msg.sender === "You" ? "bg-blue-100 ml-auto" : "bg-gray-100"
+              } max-w-[80%] break-words`}
             >
-              {msg.text}
+              <p className="font-semibold">{msg.sender}</p>
+              <p>{msg.content}</p>
+              <p className="text-xs text-gray-500">{msg.timestamp}</p>
             </div>
           ))}
         </ScrollArea>
-        <form onSubmit={sendMessage} className="flex gap-2">
+        <div className="flex space-x-2">
           <Input
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
             placeholder="Type a message"
             className="flex-grow"
           />
-          <Button type="submit" size="icon">
-            <Send className="h-4 w-4" />
-            <span className="sr-only">Send message</span>
+          <Button onClick={sendMessage} disabled={!message.trim()}>
+            <Send className="mr-2 h-4 w-4" />
+            Send
           </Button>
-        </form>
+        </div>
       </CardContent>
     </Card>
   );
